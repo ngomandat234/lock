@@ -23,7 +23,10 @@
       "xutility": "c",
       "gpio.h": "c",
       "err.h": "c",
-      "string": "c"
+      "string": "c",
+      "string_view": "c",
+      "servo.h": "c",
+      "*.tcc": "c"
     }
   }
 }

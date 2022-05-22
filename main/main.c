@@ -13,6 +13,7 @@
 #include "nvs_flash.h"
 #include <stdio.h>
 #include "rc522.h"
+#include "servo.h"
 #include "DisplayUI.h"
 #include "SNTP_local.h"
 //#include "stepper.h"
@@ -33,16 +34,20 @@ volatile bool _ChangeUI = false;
 volatile bool _cardRequest = false;
 volatile bool check = true;
 volatile bool request = true;
+volatile bool openDoor = false;
 char *TAG_SNTP;
 char strftime_buf[64];
 Time _now;
 
 
-#define WIFI_SSID "KTMT - SinhVien"
-#define WIFI_PASS "sinhvien"
+
+// #define WIFI_SSID "KTMT - SinhVien"
+// #define WIFI_PASS "sinhvien"
+#define WIFI_SSID "ManDat"
+#define WIFI_PASS "12345678"
 #define MAXIMUM_RETRY 5
-#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  60        /* Time ESP32 will go to sleep (in seconds) */
+// #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+// #define TIME_TO_SLEEP  60        /* Time ESP32 will go to sleep (in seconds) */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 /* Variable holding number of times ESP32 restarted since first boot.
@@ -53,7 +58,6 @@ Time _now;
 
 void SplitData(void);
 void task_SNTP(void);
-
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 static bool wifiConnect = false;
@@ -265,7 +269,7 @@ void http_put_card_request(const char* cardID)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "cardID", cardID);
     const char *my_json_string = cJSON_Print(root);
-    esp_http_client_config_t config = {
+    esp_http_client_config_t config = {     
        
         .url = "https://ceec-b2cd3-default-rtdb.asia-southeast1.firebasedatabase.app/cardRequest.json?auth=7xtpgyMSjViv3k9A2jHcs3VFDJHk06uPm1ynWuPE",
         .event_handler = _http_event_handler,
@@ -324,7 +328,7 @@ bool http_check_card(char*cardID)
     char local_response_buffer[100] = {0};
     
    
-        char urlRequest[180] = "https://ceec-b2cd3-default-rtdb.asia-southeast1.firebasedatabase.app/users.json?auth=7xtpgyMSjViv3k9A2jHcs3VFDJHk06uPm1ynWuPE&orderBy=\"cardID\"&equalTo=\"";
+    char urlRequest[180] = "https://ceec-b2cd3-default-rtdb.asia-southeast1.firebasedatabase.app/users.json?auth=7xtpgyMSjViv3k9A2jHcs3VFDJHk06uPm1ynWuPE&orderBy=\"cardID\"&equalTo=\"";
 
     const char* temp = "\"";
     strcat(urlRequest, cardID);
@@ -357,8 +361,6 @@ static void task_stream_card_request(void *ignore)
 {
     int content_length = 0;
     esp_http_client_config_t config = {
-      
-       
        .url = "https://ceec-b2cd3-default-rtdb.asia-southeast1.firebasedatabase.app/cardRequest.json?auth=7xtpgyMSjViv3k9A2jHcs3VFDJHk06uPm1ynWuPE",
 
         .timeout_ms = 1000};
@@ -402,7 +404,10 @@ static void task_stream_card_request(void *ignore)
                         cJSON *root = cJSON_Parse(data);
                         char *state = cJSON_GetObjectItem(root, "data")->valuestring;
                         if (strcmp(state, "o") == 0)
+                        {
                             _cardRequest = true;
+                          //  openDoor=true;
+                        }
                         ESP_LOGI(TAG, "http: %s", _cardRequest ? "true" : "false");
                         // gpio_set_level(2, 0);
                         // else if(strcmp(state, "f"))
@@ -418,50 +423,54 @@ static void task_stream_card_request(void *ignore)
             esp_http_client_close(client);
         }
     }
+      
 }
 
-// void task_Display(void *pvParameters)
-// {
-//     SSD1306_t dev = *((SSD1306_t *)pvParameters);
-//     UI_ManualDisplay(&dev, _now, true);
-      
-//    while (true)
-//    {
-//         if (_Mode == 0 && _ChangeUI){
+void task_Display(void *pvParameters)
+{
+    SSD1306_t dev = *((SSD1306_t *)pvParameters);
+    UI_ManualDisplay(&dev, _now, true);
+   while (true)
+   {
+        if (_Mode == 0 && _ChangeUI){
+      //  if (_Mode == 0){
             
-//             if(check && !_cardRequest)
-//             {
-//             ESP_LOGI(TAG,"checking dunggg ne");
+          //  if(check && !_cardRequest && openDoor )
+           if(check && !_cardRequest )
+            {
+            ESP_LOGI(TAG,"checking dunggg ne");
+            ESP_LOGI(TAG,"checking mo cua web ne");
            
-//             UI_LockCommand(&dev, false);
-//             vTaskDelay(2000 / portTICK_PERIOD_MS);
-//             _ChangeUI = false;
-//             UI_ManualDisplay(&dev, _now, true);
-//             }
-//             else if (!check && !_cardRequest)
-//             {
-//             ESP_LOGI(TAG,"checking saiii ne");
+            UI_LockCommand(&dev, false);
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            _ChangeUI = false;
+            UI_ManualDisplay(&dev, _now, true);
+           openDoor=false;
+            }
+            else if (!check && !_cardRequest)
+            {
+            ESP_LOGI(TAG,"checking saiii ne");
            
-//             UI_LockCommand(&dev,true);
-//             vTaskDelay(2000 / portTICK_PERIOD_MS);
-//             _ChangeUI = false;
-//             UI_ManualDisplay(&dev, _now, true);
-//             }
-//             if (!check && _cardRequest)
-//             {
-//              ESP_LOGI(TAG,"checking quet the k ne");
-//             UI_CheckingUser(&dev);
-//             vTaskDelay(2000 / portTICK_PERIOD_MS);
-//              _ChangeUI = false;
-//             UI_ManualDisplay(&dev, _now, true);
-//             _cardRequest = false;
-//             }
-//         }
-//       UI_ManualDisplay(&dev, _now, false);
+            UI_LockCommand(&dev,true);
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            _ChangeUI = false;
+            UI_ManualDisplay(&dev, _now, true);
+            }
+            if (!check && _cardRequest)
+            {
+             ESP_LOGI(TAG,"checking quet the k ne");
+            UI_CheckingUser(&dev);
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+             _ChangeUI = false;
+            UI_ManualDisplay(&dev, _now, true);
+            _cardRequest = false;
+            }
+        }
+      UI_ManualDisplay(&dev, _now, false);
        
-//    }
-//     vTaskDelete(NULL);
-// }
+   }
+    vTaskDelete(NULL);
+}
 
 
 void tag_handler(uint8_t *sn)
@@ -469,6 +478,7 @@ void tag_handler(uint8_t *sn)
    // SSD1306_t dev = *((SSD1306_t *)pvParameter1);
     if (_Mode == 0)
     {       
+      //  esp_sleep_enable_timer_wakeup(2000000);
         // rtc_gpio_isolate(GPIO_NUM_18);
        //gpio_set_level(25,1);
         char* temp = (char*)malloc(sizeof(char)*3);
@@ -497,8 +507,6 @@ void tag_handler(uint8_t *sn)
            
         free(temp);
         _ChangeUI = true;
-       
-       
     }
     
 }
@@ -550,6 +558,8 @@ static void http_stream(void *ignore)
                 char output_buffer[512] = "";
                 char data[100], event[20];
                 int data_read = esp_http_client_read(client, output_buffer, 512);
+               // esp_http_client_close(client);
+                 ESP_LOGI(TAG, "buffer ne: %s", output_buffer);
                 if (data_read > 0)
                 {
                     // ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
@@ -566,181 +576,72 @@ static void http_stream(void *ignore)
                         char *state = cJSON_GetObjectItem(root,"data")->valuestring;
                         if(strcmp(state, "o"))
                         {
-                            gpio_set_level(2, 0);      
-                             ESP_LOGE(TAG, "Door open");
-                        }
+                                gpio_set_level(2, 0);       
+                           //  ESP_LOGE(TAG, "Door open");
+                                vTaskDelay(3000 / portTICK_PERIOD_MS);      
+                                http_put_door("\"f\"");
+                               // http_put_door("\"o\"");
+                               // gpio_set_level(2, 1); 
+                             //    gpio_set_level(2, 1);
+                           //  Servo_Rotate(180);
+                           //  openDoor=true;
+                            //   vTaskDelay(5000 / portTICK_PERIOD_MS);
+                            //     gpio_set_level(2, 0); 
+                            //    http_put_door("\"f\"");
+                                }
                         else if(strcmp(state, "f"))
                         {
                             gpio_set_level(2, 1);    
-                             ESP_LOGE(TAG, "Door close");
+                         //    ESP_LOGE(TAG, "Door close");
+                          //   Servo_Rotate(90);
+                            //    vTaskDelay(5000 / portTICK_PERIOD_MS);
+                            //     gpio_set_level(2, 0); 
+                            //    http_put_door("\"o\"");
+                            //    Servo_Rotate(180);
                         }
                     }
                 }
-                // else
+                // else gpio_set_level(2, 1);
                 // {
                 //     ESP_LOGE(TAG, "Failed to read response");
                 //     break;
                 // }
             }
+            //
             esp_http_client_close(client);
             // free(output);
         }
+       
     
     }
 
     // free(output_buffer);
 }
 
-static void sleep_mode()
-{
-   while (true) {
-        /* Wake up in 20 seconds, or when button is pressed */
-        esp_sleep_enable_timer_wakeup(2000000);
-       // esp_sleep_enable_gpio_wakeup();
-
-        /* Wait until GPIO goes high */
-        // if (gpio_get_level(button_gpio_num) == wakeup_level) {
-        //     printf("Waiting for GPIO%d to go high...\n", button_gpio_num);
-        //     do {
-        //         vTaskDelay(pdMS_TO_TICKS(10));
-        //     } while (gpio_get_level(button_gpio_num) == wakeup_level);
-        // }
-
-        printf("Entering light sleep\n");
-        /* To make sure the complete line is printed before entering sleep mode,
-         * need to wait until UART TX FIFO is empty:
-         */
-     //   uart_wait_tx_idle_polling(CONFIG_ESP_CONSOLE_UART_NUM);
-
-        /* Get timestamp before entering sleep */
-        int64_t t_before_us = esp_timer_get_time();
-        
-        /* Enter sleep mode */
-        esp_light_sleep_start();
-        /* Execution continues here after wakeup */
-
-        /* Get timestamp after waking up from sleep */
-        int64_t t_after_us = esp_timer_get_time();
-
-        /* Determine wake up reason */
-        const char* wakeup_reason;
-        switch (esp_sleep_get_wakeup_cause()) {
-            case ESP_SLEEP_WAKEUP_TIMER:
-                wakeup_reason = "timer";
-                break;
-            case ESP_SLEEP_WAKEUP_GPIO:
-                wakeup_reason = "pin";
-                break;
-            default:
-                wakeup_reason = "other";
-                break;
-        }
-
-        printf("Returned from light sleep, reason: %s, t=%lld ms, slept for %lld ms\n",
-                wakeup_reason, t_after_us / 1000, (t_after_us - t_before_us) / 1000);
-    }
-}
-void app_main(void)
-{   
-        
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-    wifi_init_sta();
-    //SSD1306_t dev;
-
-    //UI_DisplayInit(&dev, SDA_PIN, SCL_PIN);
-    
-   // rtc_gpio_isolate(GPIO_NUM_18);
-   // xTaskCreate(&task_Display, "Manual", 4096, &dev, 5, NULL);
-     const rc522_start_args_t start_args = {
-        .miso_io = 19,
-        .mosi_io = 23,
-        .sck_io = 18,
-        .sda_io = 5,
-        .callback = &tag_handler,
-    };
-    rc522_start(start_args);
-    xTaskCreate(&task_stream_card_request, "task_stream_card_request", 8192, NULL, 0, NULL );
-    xTaskCreate(&http_stream, "http_test_task", 8192, NULL, 0, NULL);     
-    // xTaskCreate(&sleep_mode, "sleep_mode", 8192, NULL, 0, NULL);     
-    sleep_mode();
-}
-
-/* Light sleep example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
-// #include <stdio.h>
-// #include <string.h>
-// #include <stdlib.h>
-// #include <time.h>
-// #include <sys/time.h>
-// #include "freertos/FreeRTOS.h"
-// #include "freertos/task.h"
-// #include "esp_sleep.h"
-// #include "esp_log.h"
-// #include "driver/uart.h"
-// #include "driver/gpio.h"
-// #include "esp_timer.h"
-
-// /* Most development boards have "boot" button attached to GPIO0.
-//  * You can also change this to another pin.
-//  */
-// #if CONFIG_IDF_TARGET_ESP32C3
-// #define BUTTON_GPIO_NUM_DEFAULT     9
-// #else
-// #define BUTTON_GPIO_NUM_DEFAULT     0
-// #endif
-
-// /* "Boot" button is active low */
-// #define BUTTON_WAKEUP_LEVEL_DEFAULT     0
-
-// void app_main(void)
+// static void sleep_mode()
 // {
-   
-//     /* Configure the button GPIO as input, enable wakeup */
-//     const int button_gpio_num = BUTTON_GPIO_NUM_DEFAULT;
-//     const int wakeup_level = BUTTON_WAKEUP_LEVEL_DEFAULT;
-//     gpio_config_t config = {
-//             .pin_bit_mask = BIT64(button_gpio_num),
-//             .mode = GPIO_MODE_INPUT
-//     };
-//     ESP_ERROR_CHECK(gpio_config(&config));
-//     gpio_wakeup_enable(button_gpio_num,
-//             wakeup_level == 0 ? GPIO_INTR_LOW_LEVEL : GPIO_INTR_HIGH_LEVEL);
-//     while (true) {
-//         /* Wake up in 10 seconds, or when button is pressed */
-//                 esp_sleep_enable_timer_wakeup(5000000);
-
-//         esp_sleep_enable_gpio_wakeup();
+//    while (true) {
+//         /* Wake up in 20 seconds, or when button is pressed */
+//         esp_sleep_enable_timer_wakeup(2000000);
+//        // esp_sleep_enable_gpio_wakeup();
 
 //         /* Wait until GPIO goes high */
-//         if (gpio_get_level(button_gpio_num) == wakeup_level) {
-//             printf("Waiting for GPIO%d to go high...\n", button_gpio_num);
-//             do {
-//                 vTaskDelay(pdMS_TO_TICKS(10));
-//             } while (gpio_get_level(button_gpio_num) == wakeup_level);
-//         }
+//         // if (gpio_get_level(button_gpio_num) == wakeup_level) {
+//         //     printf("Waiting for GPIO%d to go high...\n", button_gpio_num);
+//         //     do {
+//         //         vTaskDelay(pdMS_TO_TICKS(10));
+//         //     } while (gpio_get_level(button_gpio_num) == wakeup_level);
+//         // }
 
 //         printf("Entering light sleep\n");
 //         /* To make sure the complete line is printed before entering sleep mode,
 //          * need to wait until UART TX FIFO is empty:
 //          */
-//         uart_wait_tx_idle_polling(CONFIG_ESP_CONSOLE_UART_NUM);
+//      //   uart_wait_tx_idle_polling(CONFIG_ESP_CONSOLE_UART_NUM);
 
 //         /* Get timestamp before entering sleep */
 //         int64_t t_before_us = esp_timer_get_time();
-
+        
 //         /* Enter sleep mode */
 //         esp_light_sleep_start();
 //         /* Execution continues here after wakeup */
@@ -758,20 +659,39 @@ void app_main(void)
 //                 wakeup_reason = "pin";
 //                 break;
 //             default:
-//                 wakeup_reason = "other";
+//                 wakeup_reason = "other";a
 //                 break;
 //         }
 
 //         printf("Returned from light sleep, reason: %s, t=%lld ms, slept for %lld ms\n",
 //                 wakeup_reason, t_after_us / 1000, (t_after_us - t_before_us) / 1000);
-//                  gpio_pad_select_gpio(2);
-//     gpio_set_direction(2, GPIO_MODE_OUTPUT);
-//     gpio_set_level(2,1);
-//     printf("sang den \n");
-//     vTaskDelay(2000 / portTICK_PERIOD_MS);
-//     gpio_set_level(2,0);
-//      printf("tat den \n");
-//         vTaskDelay(2000 / portTICK_PERIOD_MS);
 //     }
-    
 // }
+void app_main(void)
+{   
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+    wifi_init_sta();
+ //   Servo_Init();
+    // SSD1306_t dev;
+
+    // UI_DisplayInit(&dev, SDA_PIN, SCL_PIN);
+    
+   // rtc_gpio_isolate(GPIO_NUM_18);
+    // xTaskCreate(&task_Display, "Manual", 4096, &dev, 5, NULL);
+     const rc522_start_args_t start_args = {
+        .miso_io = 19,
+        .mosi_io = 23,
+        .sck_io = 18,
+        .sda_io = 5,
+        .callback = &tag_handler,
+    };
+    rc522_start(start_args);
+    xTaskCreate(&task_stream_card_request, "task_stream_card_request", 8192, NULL, 0, NULL );
+    xTaskCreate(&http_stream, "http_test_task", 8192, NULL, 0, NULL);
+}
